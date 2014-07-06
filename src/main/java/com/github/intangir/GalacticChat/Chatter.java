@@ -111,10 +111,10 @@ public class Chatter extends Config {
 	}
 	
 	static public void logOut(CommandSender p) {
-		chatters.get(p.getName()).save();
+		find(p.getName()).save();
 
     	// remove the player from all the active channels
-		chatters.get(p.getName()).leaveAll();
+		find(p.getName()).leaveAll();
 		chatters.remove(p.getName());
 	}
 	
@@ -128,15 +128,78 @@ public class Chatter extends Config {
 
 	// static version for debug and console
 	public void channelInfo(String channel) {
+		// determine channel
 		channel = activeChannel(channel);
 		if(channel == null) {
-			player.sendMessage(config.getDefaultColor() + "Invalid channel or focus.");
+			player.sendMessage(ChatColor.RED + "Invalid channel or focus.");
 		} else {
 			List<String> members = new ArrayList<String>();
 			for(Chatter chatter: activeChannels.get(channel)) {
 				members.add(chatter.player.getName());
 			}
-			player.sendMessage(String.format("%sUsers in channel [%s. %s] %s", config.getDefaultColor(), channels.get(channel), channel, join(members, ", ")));
+			player.sendMessage(String.format("%sUsers in channel [%s. %s] %s", config.getDefaultColor(), channels.get(channel), channel, Utility.join(members, ", ")));
+		}
+	}
+	
+	// ban a player from a channel
+	public void ban(String other, String channel) {
+		// determine channel
+		channel = activeChannel(channel);
+		if(channel == null) {
+			player.sendMessage(ChatColor.RED + "Invalid channel or focus.");
+			return;
+		}
+			
+		// get the player
+		Chatter chatter = find(other);
+		if(chatter == null) {
+			player.sendMessage(ChatColor.RED + "There is no player by that name online.");
+			return;
+		}
+		
+		if(chatter.banned.contains(channel)) {
+			// already banned, toggle it to unbanned
+			chatter.banned.remove(channel);
+			player.sendMessage(String.format("%sUnbanned %s from [%s. %s]", config.getDefaultColor(), other, channels.get(channel), channel));
+
+		} else {
+			// add to the banned list
+			chatter.banned.add(channel);
+			player.sendMessage(String.format("%sBanned %s from [%s. %s]", config.getDefaultColor(), other, channels.get(channel), channel));
+			
+			// remove them if they are in it
+			if(chatter.channels.containsKey(channel)) {
+				chatter.leave(channel);
+			}
+			chatter.save();
+		}
+	}
+	
+	public void invite(String other, String channel) {
+		// determine channel
+		channel = activeChannel(channel);
+		if(channel == null) {
+			player.sendMessage(ChatColor.RED + "Invalid channel or focus.");
+			return;
+		}
+			
+		// get the player
+		Chatter chatter = find(other);
+		if(chatter == null) {
+			player.sendMessage(ChatColor.RED + "There is no player by that name online.");
+			return;
+		}
+		
+		// check if they are already in it..
+		if(chatter.channels.containsKey(channel)) {
+			player.sendMessage(ChatColor.RED + other + " is already in the channel.");
+		} else { 
+			// send the invite, and tell the two parties
+			player.sendMessage(String.format("%sInvited %s to [%s. %s]", config.getDefaultColor(), other, channels.get(channel), channel));
+			if(!chatter.ignored(player.getName())) {
+				chatter.invited = channel;
+				chatter.player.sendMessage(String.format("%s%s invited you to [%s], type /%s to accept.", config.getDefaultColor(), player.getName(), channel, config.getCommand("join")));
+			}
 		}
 	}
 	
@@ -214,7 +277,7 @@ public class Chatter extends Config {
 			return;
 		} else if(channels.size() >= 9) {
 			// if in too many channels, tell them to leave some
-			player.sendMessage(ChatColor.RED + "You are in too many channels already. Perhaps you should /leave some.");
+			player.sendMessage(ChatColor.RED + "You are in too many channels already. Perhaps you should /" + config.getCommand("leave") + " some.");
 			return;
 		}
 		
@@ -227,11 +290,13 @@ public class Chatter extends Config {
 				alias = null;
 			}
 		}
+		
 		// find a valid alias
 		if(alias == null) {
 			alias = alias(channel);
 		}
 
+		// finally join
 		join(channel, alias);
 		save();
 	}
@@ -250,31 +315,35 @@ public class Chatter extends Config {
 		// make sure its in your own list (redundancy should be harmless)
 		channels.put(channel, alias);
 		
-		rawSend(channel, player.getName(), String.format("%%s%s joined channel [%%s. %s]", player.getName(), channel));
+		if(hidden) {
+			player.sendMessage(String.format("%s%s joined channel [%s. %s]", config.getDefaultColor(), player.getName(), channels.get(channel), channel));
+		} else {
+			rawSend(channel, player.getName(), String.format("%%s%s joined channel [%%s. %s]", player.getName(), channel));
+		}
 	}
 	
+	// leaves channel
 	public void leave(String channel) {
+		channel = activeChannel(channel);
+		
 		if(channel == null) {
-			channel = getChannel(focus);
-			if(channel == null) {
-				player.sendMessage(ChatColor.RED + "You have no valid focus channel set.");
-				return;
-			}
+			player.sendMessage(ChatColor.RED + "Invalid Channel or focus.");
+			return;
 		}
 		
-		channel = getChannel(channel);
-		if(channel == null) {
-			player.sendMessage(ChatColor.RED + "You are not in any channels by that name or alias.");
+		if(hidden) {
+			player.sendMessage(String.format("%s%s left channel [%s. %s] (hidden)", config.getDefaultColor(), player.getName(), channels.get(channel), channel));
 		} else {
 			rawSend(channel, player.getName(), String.format("%%s%s left channel [%%s. %s]", player.getName(), channel));
-
-			// actual leaving
-			activeChannels.get(channel).remove(this);
-			channels.remove(channel);
-			save();
 		}
+
+		// actual leaving
+		activeChannels.get(channel).remove(this);
+		channels.remove(channel);
+		save();
 	}
 	
+	// toggles censoring mode
 	public void censor(String mode) {
 		
 		if(mode == null) {
@@ -358,7 +427,7 @@ public class Chatter extends Config {
 	// returns the channel to message to given an alias, a channel, or null
 	// returns the valid channel name or null if it fails or resorts to local
 	public String activeChannel(String channel) {
-		debug("determining active with " + channel + " and " + focus);
+		debug("determining active with channel " + channel + " and focus " + focus);
 
 		// verify you have a valid target
 		if(channel == null) {
@@ -419,24 +488,26 @@ public class Chatter extends Config {
 	
 	// check if they are ignored
 	public boolean ignored(String sender) {
-		return false;
+		return ignoring.contains(sender);
 	}
 	
+	// ignore a person
 	public void ignore(String other, Boolean mode) {
-		if(mode.booleanValue() == true) {
+		if(mode == null) {
+			ignore(other, !ignoring.contains(other));
+		} else if(mode.booleanValue() == true) {
 			ignoring.add(other);
 			player.sendMessage(config.getDefaultColor() + other + " is being ignored.");
-		} else if(mode.booleanValue() == false) {
+		} else {
 			ignoring.remove(other);
 			player.sendMessage(config.getDefaultColor() + other + " is not being ignored.");
-		} else {
-			ignore(other, !ignoring.contains(other));
 		}
+		save();
 	}
 	
 	// sends a private message
 	public void tell(String other, String message) {
-		Chatter chatter = chatters.get(other);
+		Chatter chatter = find(other);
 		if(chatter == null) {
 			player.sendMessage(ChatColor.RED + "There is no player by that name online.");
 		} else {
@@ -446,7 +517,7 @@ public class Chatter extends Config {
 	}
 	
 	public void retell(String message) {
-		Chatter chatter = chatters.get(retellTo);
+		Chatter chatter = find(retellTo);
 		if(chatter == null) {
 			player.sendMessage(ChatColor.RED + "No one to retell to.");
 		} else {
@@ -455,7 +526,7 @@ public class Chatter extends Config {
 	}
 
 	public void reply(String message) {
-		Chatter chatter = chatters.get(replyTo);
+		Chatter chatter = find(replyTo);
 		if(chatter == null) {
 			player.sendMessage(ChatColor.RED + "No one to reply to.");
 		} else {
@@ -479,9 +550,4 @@ public class Chatter extends Config {
 			replyTo = sender;
 		}
 	}
-	
-	public void ban(String other, String channel) {
-		
-	}
-
 }

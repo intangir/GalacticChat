@@ -1,8 +1,10 @@
 package com.github.intangir.GalacticChat;
 
+import com.github.intangir.GalacticChat.Commands.BanCommand;
 import com.github.intangir.GalacticChat.Commands.CensorCommand;
 import com.github.intangir.GalacticChat.Commands.ChannelCommand;
 import com.github.intangir.GalacticChat.Commands.IgnoreCommand;
+import com.github.intangir.GalacticChat.Commands.InviteCommand;
 import com.github.intangir.GalacticChat.Commands.JoinCommand;
 import com.github.intangir.GalacticChat.Commands.LeaveCommand;
 import com.github.intangir.GalacticChat.Commands.ReplyCommand;
@@ -63,7 +65,6 @@ public class GalacticChat extends Plugin implements Listener
     
     @EventHandler
     public void onChatEvent(final ChatEvent e) {
-    	getLogger().info("caught event");
     	if(e.isCancelled()) { return; }
     	if(e.getSender() instanceof CommandSender) {
 	    	Chatter chatter = Chatter.find((CommandSender)e.getSender());

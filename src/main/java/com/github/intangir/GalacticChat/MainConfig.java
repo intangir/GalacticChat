@@ -84,7 +84,7 @@ public class MainConfig extends Config {
 		commands.put("tell", "tell msg w");
 		commands.put("reply", "reply r");
 		commands.put("retell", "retell rt");
-		commands.put("ban", "gcban chatban chanban");
+		commands.put("ban", "gcban gcunban gcpardon");
 		commands.put("say", "say");
 		
 		channelLimit = 9;
