@@ -6,7 +6,7 @@
 
     <groupId>com.github.intangir.GalacticChat</groupId>
     <artifactId>GalacticChat</artifactId>
-    <version>1.0</version>
+    <version>1.1</version>
 
     <repositories>
         <repository>
@@ -16,6 +16,12 @@
     </repositories>
 
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

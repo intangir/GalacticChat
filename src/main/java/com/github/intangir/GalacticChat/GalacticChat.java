@@ -18,6 +18,7 @@ import net.md_5.bungee.api.CommandSender;
 import net.md_5.bungee.api.event.ChatEvent;
 import net.md_5.bungee.api.event.PlayerDisconnectEvent;
 import net.md_5.bungee.api.event.PostLoginEvent;
+import net.md_5.bungee.api.event.TabCompleteEvent;
 import net.md_5.bungee.api.plugin.Listener;
 import net.md_5.bungee.event.EventHandler;
 import lombok.Getter;
@@ -72,5 +73,12 @@ public class GalacticChat extends Plugin implements Listener
 				e.setCancelled(true);
 			}
     	}
+    }
+    
+    @EventHandler
+    public void onTabComplete(final TabCompleteEvent e) {
+		String suggestion = Chatter.tabComplete(e.getCursor());
+		if(suggestion != null)
+			e.getSuggestions().add(suggestion);
     }
 }

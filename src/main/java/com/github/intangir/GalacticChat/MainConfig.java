@@ -2,9 +2,12 @@ package com.github.intangir.GalacticChat;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import static com.github.intangir.GalacticChat.Utility.join;
@@ -32,6 +35,9 @@ public class MainConfig extends Config {
 	@Comment("list of channels whos names are not allowed (lowercase)")
 	private List<String> unusableChannels;
 
+	@Comment("list of channels that are protected from spam")
+	private List<String> protectedChannels;
+
 	@Comment("List of commands")
 	private Map<String, String> commands;
 	
@@ -53,6 +59,30 @@ public class MainConfig extends Config {
 	@Comment("Have chat fall back to local when the focus channel is invalid")
 	private boolean localIfNoFocus;
 
+	@Comment("Auto focus the channel when you use it")
+	private boolean focusOnUse;
+	
+	@Comment("delay added for normal chat")
+	private float spamNormalDelay;
+
+	@Comment("delay added for all caps")
+	private float spamAllCapsDelay;
+
+	@Comment("delay added for cussing")
+	private float spamCussDelay;
+
+	@Comment("delay added for repeating")
+	private float spamRepeatDelay;
+
+	@Comment("how long your delay can be before it counts as spam")
+	private float spamThreshhold;
+
+	@Comment("how long your delay can be before your just kicked")
+	private float spamKickThreshold;
+
+	@Comment("how long your delay can be before your banned")
+	private float spamBanThreshold;
+
 	@Comment("Print debugging information")
 	private boolean debug;
 
@@ -72,6 +102,8 @@ public class MainConfig extends Config {
 		
 		unusableChannels = new ArrayList<String>();
 		unusableChannels.add("help");
+		
+		protectedChannels = new ArrayList<String>(defaultChannels.keySet());
 		
 		commands = new HashMap<String, String>();
 		commands.put("join", "join focus accept");
@@ -104,17 +136,36 @@ public class MainConfig extends Config {
 		localIfNoFocus = true;
 		
 		debug = false;
+		
+		completable = new HashSet<String>();
+		
+		// spam settings
+		spamNormalDelay = 2;
+		spamAllCapsDelay = 1;
+		spamCussDelay = 1;
+		spamRepeatDelay = 1;
+		spamThreshhold = 3;
+		spamKickThreshold = 10;
+		spamBanThreshold = 14;
 	}
 	
-	private Pattern censorsPattern;
+	private transient Pattern censorsPattern;
+	private transient Set<String> completable;
 	
 	@Override
 	public void init() throws InvalidConfigurationException {
 		super.init();
 		
+		// build censoring pattern
 		String pattern = join(new ArrayList<String>(censors.keySet()), "|");
-		
 		censorsPattern = Pattern.compile(pattern, Pattern.CASE_INSENSITIVE);
+		
+		// build tab completable set
+		completable.addAll(Arrays.asList(getAliases("tell")));
+		completable.addAll(Arrays.asList(getAliases("ignore")));
+		completable.addAll(Arrays.asList(getAliases("unignore")));
+		completable.addAll(Arrays.asList(getAliases("invite")));
+		completable.addAll(Arrays.asList(getAliases("ban")));
 	}
 	
 	public String censor(String message) {

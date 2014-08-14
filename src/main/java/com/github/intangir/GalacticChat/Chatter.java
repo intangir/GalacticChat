@@ -16,7 +16,6 @@ import net.cubespace.Yamler.Config.Config;
 import net.cubespace.Yamler.Config.InvalidConfigurationException;
 import net.md_5.bungee.api.ChatColor;
 import net.md_5.bungee.api.CommandSender;
-import static com.github.intangir.GalacticChat.Utility.join;
 
 @SuppressWarnings("deprecation")
 public class Chatter extends Config {
@@ -37,6 +36,8 @@ public class Chatter extends Config {
 	private transient String invited;
 	private transient String replyTo;
 	private transient String retellTo;
+	private transient Map<String, Long> spamTime;
+	private transient Map<String, String> spamRepeated;
 
 	public Chatter(GalacticChat plugin, CommandSender player) {
 		CONFIG_FILE = new File(plugin.getDataFolder(), "players/" + player.getName() + ".yml");
@@ -62,8 +63,8 @@ public class Chatter extends Config {
 		hidden = false;
 		ignoring = new HashSet<String>();
 		banned = new HashSet<String>();
-		
-
+		spamTime = new HashMap<String, Long>();
+		spamRepeated = new HashMap<String, String>();
 	}
 	
 	@Override
@@ -118,6 +119,23 @@ public class Chatter extends Config {
 		chatters.remove(p.getName());
 	}
 	
+	static public String tabComplete(String cursor) {
+    	if(cursor.charAt(0) != '/')
+			return null;
+
+		String[] part = cursor.substring(1).split(" ");
+    	if(part.length == 2 && config.getCompletable().contains(part[0])) {
+    		debug("tab completing " + cursor);
+    		// its a completable command, see if they are typing a name
+    		for(String name : chatters.keySet()) {
+    			if(part[1].equalsIgnoreCase(name.substring(0, part[1].length())) && !chatters.get(name).hidden) {
+					return name;
+    			}
+    		}
+    	}
+    	return null;
+	}
+	
 	static public Chatter find(CommandSender p) {
 		return chatters.get(p.getName());
 	}
@@ -128,16 +146,24 @@ public class Chatter extends Config {
 
 	// static version for debug and console
 	public void channelInfo(String channel) {
-		// determine channel
-		channel = activeChannel(channel);
 		if(channel == null) {
-			player.sendMessage(ChatColor.RED + "Invalid channel or focus.");
-		} else {
-			List<String> members = new ArrayList<String>();
-			for(Chatter chatter: activeChannels.get(channel)) {
-				members.add(chatter.player.getName());
+			for(String chan : channels.keySet()) {
+				channelInfo(chan);
 			}
-			player.sendMessage(String.format("%sUsers in channel [%s. %s] %s", config.getDefaultColor(), channels.get(channel), channel, Utility.join(members, ", ")));
+		} else {
+			// determine channel
+			channel = activeChannel(channel);
+			if(channel == null) {
+				player.sendMessage(ChatColor.RED + "Invalid channel or focus.");
+			} else {
+				List<String> members = new ArrayList<String>();
+				for(Chatter chatter: activeChannels.get(channel)) {
+					if(!chatter.hidden) {
+						members.add(chatter.player.getName());
+					}
+				}
+				player.sendMessage(String.format("%sUsers in channel [%s. %s] %s", config.getDefaultColor(), channels.get(channel), channel, Utility.join(members, ", ")));
+			}
 		}
 	}
 	
@@ -215,8 +241,8 @@ public class Chatter extends Config {
 				target = target.toLowerCase();
 			} else {
 				target = getChannel(target);
-				debug("Determined target " + target);
 			}
+			debug("Determined target " + target);
 			if(target == null) {
 				// this command must not be a chat alias (probably for local server)
 				return false;
@@ -240,7 +266,12 @@ public class Chatter extends Config {
 	
 	public void leaveAll() {
 		for(Map.Entry<String, String> e : channels.entrySet()) {
-    		activeChannels.get(e.getKey()).remove(this);
+			if(!hidden) {
+				try {
+					rawSend(e.getKey(), player.getName(), String.format("%%s%s left channel [%%s. %s]", player.getName(), e.getKey()));
+				} catch(java.util.ConcurrentModificationException ignore) {}
+			}
+			activeChannels.get(e.getKey()).remove(this);
     	}
 	}
 	
@@ -258,7 +289,7 @@ public class Chatter extends Config {
 		}
 		if(config.getLocalChannels().contains(channel.toLowerCase())) {
 			// they are trying to join a local channel. set focus
-			player.sendMessage(config.getDefaultColor() + "Focused Channel Local");
+			player.sendMessage(config.getDefaultColor() + "Focused Channel [l. Local]");
 			setFocus(channel);
 			return;
 		} else if(channels.containsKey(channel) && (channels.get(channel).equals(alias) || alias == null)) {
@@ -298,6 +329,9 @@ public class Chatter extends Config {
 
 		// finally join
 		join(channel, alias);
+		if(config.isFocusOnUse()) {
+			focus = channel;
+		}
 		save();
 	}
 	
@@ -316,7 +350,7 @@ public class Chatter extends Config {
 		channels.put(channel, alias);
 		
 		if(hidden) {
-			player.sendMessage(String.format("%s%s joined channel [%s. %s]", config.getDefaultColor(), player.getName(), channels.get(channel), channel));
+			player.sendMessage(String.format("%s%s joined channel [%s. %s] (hidden)", config.getDefaultColor(), player.getName(), channels.get(channel), channel));
 		} else {
 			rawSend(channel, player.getName(), String.format("%%s%s joined channel [%%s. %s]", player.getName(), channel));
 		}
@@ -451,6 +485,9 @@ public class Chatter extends Config {
 			// not targetting a valid channel
 			if(config.isLocalIfNoFocus()) {
 				// default to local (fall out)
+				if(config.isFocusOnUse()) {
+					focus = channel;
+				}
 				return false;
 			} else {
 				// or just alert them of invalid focus
@@ -458,9 +495,14 @@ public class Chatter extends Config {
 				return true;
 			}
 		}
+		if(config.isFocusOnUse()) {
+			focus = channel;
+		}
 		
 		// send to channel!
-		rawSend(channel, player.getName(), String.format("%%s[%%s]%s<%s> %s", ChatColor.WHITE, player.getName(), message));
+		if(!isSpamming(message, channel)) {
+			rawSend(channel, player.getName(), String.format("%%s[%%s]%s<%s> %s", ChatColor.WHITE, player.getName(), message.replace("%", "%%")));
+		}
 		return true;
 	}
 	
@@ -549,5 +591,74 @@ public class Chatter extends Config {
 			player.sendMessage(message);
 			replyTo = sender;
 		}
+	}
+	
+	// checks for spamming
+	public boolean isSpamming(String text, String channel) {
+		final float nanos = 1000000000;
+		boolean spamming = false;
+		// protected channel
+		debug("checking for spam to " + channel + " text: " + text);
+		if(config.getProtectedChannels().contains(channel)) {
+			// start counting
+			long currTime = System.nanoTime();
+			if(!spamTime.containsKey(channel))
+				spamTime.put(channel, currTime);
+			
+			// get last delayed time
+			long lastTime = spamTime.get(channel);
+			
+			debug("current time " + currTime + " lastTime  " + lastTime);
+			// has the entire delay passed?
+			if(currTime >= lastTime) {
+				// so much time has passed the old time is irrelevant, update it to now
+				debug("delay expired");
+				lastTime = currTime;
+			} else if(currTime < lastTime - config.getSpamThreshhold() * nanos) {
+				// they are spamming, send warning
+				player.sendMessage(ChatColor.RED + "You are sending to this channel too quickly!");
+				spamming = true;
+				
+				// are they over the kick threshhold?
+				if(currTime < lastTime - config.getSpamKickThreshold() * nanos) {
+					leave(channel);
+					
+					// are they even over the ban threshold?
+					if(currTime < lastTime - config.getSpamBanThreshold() * nanos) {
+						banned.add(channel);
+					}
+				}
+			}
+			
+			// now add up the delays based on context for next time
+			lastTime += config.getSpamNormalDelay() * nanos;
+			
+			// all caps
+			if(text.toUpperCase().equals(text)) {
+				debug("penalizing for uppercase");
+				lastTime += config.getSpamAllCapsDelay() * nanos;
+			}
+			
+			// cussing
+			if(!text.equals(config.censor(text))) {
+				debug("penalizing for cussing");
+				lastTime += config.getSpamCussDelay() * nanos;
+			}
+			
+			// repeating
+			if(text.equals(spamRepeated.get(channel))) {
+				debug("penalizing for repeat");
+				lastTime += config.getSpamRepeatDelay() * nanos;
+			}
+			
+			// save info
+			debug("delay " + lastTime);
+			spamTime.put(channel, lastTime);
+			if(!spamming) {
+				spamRepeated.put(channel, text);
+			}
+			
+		}
+		return spamming;
 	}
 }
