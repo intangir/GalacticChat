@@ -21,7 +21,9 @@ Features:
 * No need for a bukkit side plugin
 * CONSOLE can also join channels and chat
 * Can hide admins and console (set hidden = true in user config)
-
+* optional Spam protection (very configurable)
+* tabcomplete names even across servers
+* optional auto focus on use/join
 
 Permissions:
 - galacticchat.joinleave (can join and leave channels)
