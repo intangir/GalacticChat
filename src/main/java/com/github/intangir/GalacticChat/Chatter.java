@@ -103,6 +103,11 @@ public class Chatter extends Config {
 
 	static public void logOn(GalacticChat plugin, CommandSender p) {
 
+		// sometimes the logout is missed (i think its when server kicks them?)
+		if(chatters.containsKey(p.getName())) {
+			logOut(p);
+		}
+
 		// load players channels config
     	Chatter joining = new Chatter(plugin, p);
     	joining.init();

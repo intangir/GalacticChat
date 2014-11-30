@@ -2,3 +2,4 @@ name: GalacticChat
 main: com.github.intangir.GalacticChat.GalacticChat
 version: ${version}
 author: Intangir
+depends: [Yamler]
