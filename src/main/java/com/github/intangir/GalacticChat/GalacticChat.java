@@ -12,6 +12,7 @@ import com.github.intangir.GalacticChat.Commands.RetellCommand;
 import com.github.intangir.GalacticChat.Commands.SayCommand;
 import com.github.intangir.GalacticChat.Commands.TellCommand;
 import com.github.intangir.GalacticChat.Commands.UnignoreCommand;
+import com.github.intangir.GalacticChat.Commands.ColorCommand;
 
 import net.cubespace.Yamler.Config.InvalidConfigurationException;
 import net.md_5.bungee.api.CommandSender;
@@ -51,6 +52,7 @@ public class GalacticChat extends Plugin implements Listener
         getProxy().getPluginManager().registerCommand(this, new ReplyCommand(config));
         getProxy().getPluginManager().registerCommand(this, new SayCommand(config));
         getProxy().getPluginManager().registerCommand(this, new BanCommand(config));
+        getProxy().getPluginManager().registerCommand(this, new ColorCommand(config));
         Chatter.logOn(this, getProxy().getConsole());
     }
 	

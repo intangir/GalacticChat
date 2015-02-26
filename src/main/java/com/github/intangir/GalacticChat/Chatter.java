@@ -16,6 +16,7 @@ import net.cubespace.Yamler.Config.Config;
 import net.cubespace.Yamler.Config.InvalidConfigurationException;
 import net.md_5.bungee.api.ChatColor;
 import net.md_5.bungee.api.CommandSender;
+import net.md_5.bungee.api.connection.ProxiedPlayer;
 
 @SuppressWarnings("deprecation")
 public class Chatter extends Config {
@@ -26,6 +27,7 @@ public class Chatter extends Config {
 	static private Logger log;
 
 	private Map<String, String> channels;
+	private Map<String, String> colors;
 	private String focus;
 	private boolean censoring;
 	private boolean hidden;
@@ -34,13 +36,14 @@ public class Chatter extends Config {
 	private transient Map<String, String> aliases;
 	private transient CommandSender player;
 	private transient String invited;
+	private transient String invitedalias;
 	private transient String replyTo;
 	private transient String retellTo;
 	private transient Map<String, Long> spamTime;
 	private transient Map<String, String> spamRepeated;
 
 	public Chatter(GalacticChat plugin, CommandSender player) {
-		CONFIG_FILE = new File(plugin.getDataFolder(), "players/" + player.getName() + ".yml");
+		CONFIG_FILE = new File(plugin.getDataFolder(), "players/" + getUniqueId(player) + ".yml");
 		
 		this.player = player;
 		
@@ -55,8 +58,10 @@ public class Chatter extends Config {
 		BiMap<String, String> bimap = HashBiMap.create(config.getDefaultChannels());
 		channels = bimap;
 		aliases = bimap.inverse();
+		colors = new HashMap<String, String>();
 		focus = config.getDefaultFocus();
 		invited = null;
+		invitedalias = null;
 		censoring = true;
 		replyTo = null;
 		retellTo = null;
@@ -100,7 +105,7 @@ public class Chatter extends Config {
 			log.info(message);
 		}
 	}
-
+	
 	static public void logOn(GalacticChat plugin, CommandSender p) {
 
 		// sometimes the logout is missed (i think its when server kicks them?)
@@ -123,7 +128,33 @@ public class Chatter extends Config {
 		find(p.getName()).leaveAll();
 		chatters.remove(p.getName());
 	}
+
+	static public String getDisplayName(CommandSender p, String color) {
+		if(color == null) {
+			color = config.getDefaultColor();
+		}
+		if(p instanceof ProxiedPlayer) {
+			return ((ProxiedPlayer) p).getDisplayName() + color;
+		} else {
+			return color + p.getName();
+		}
+	}
+
+	static public String getUniqueId(CommandSender p) {
+		if(p instanceof ProxiedPlayer) {
+			return ((ProxiedPlayer) p).getUniqueId().toString();
+		} else {
+			return p.getName();
+		}
+	}
 	
+	public String getColor(String channel) {
+		if(!colors.containsKey(channel)) {
+			colors.put(channel, getNextColor());
+		}
+		return colors.get(channel);
+	}
+
 	static public String tabComplete(String cursor) {
     	if(cursor.charAt(0) != '/')
 			return null;
@@ -133,7 +164,7 @@ public class Chatter extends Config {
     		debug("tab completing " + cursor);
     		// its a completable command, see if they are typing a name
     		for(String name : chatters.keySet()) {
-    			if(part[1].equalsIgnoreCase(name.substring(0, part[1].length())) && !chatters.get(name).hidden) {
+    			if(part[1].length() < name.length() && part[1].equalsIgnoreCase(name.substring(0, part[1].length())) && !chatters.get(name).hidden) {
 					return name;
     			}
     		}
@@ -164,10 +195,10 @@ public class Chatter extends Config {
 				List<String> members = new ArrayList<String>();
 				for(Chatter chatter: activeChannels.get(channel)) {
 					if(!chatter.hidden) {
-						members.add(chatter.player.getName());
+						members.add(getDisplayName(chatter.player, null));
 					}
 				}
-				player.sendMessage(String.format("%sUsers in channel [%s. %s] %s", config.getDefaultColor(), channels.get(channel), channel, Utility.join(members, ", ")));
+				player.sendMessage(String.format("%sUsers in channel [%s. %s] %s", getColor(channel), channels.get(channel), channel, Utility.join(members, ", ")));
 			}
 		}
 	}
@@ -191,12 +222,12 @@ public class Chatter extends Config {
 		if(chatter.banned.contains(channel)) {
 			// already banned, toggle it to unbanned
 			chatter.banned.remove(channel);
-			player.sendMessage(String.format("%sUnbanned %s from [%s. %s]", config.getDefaultColor(), other, channels.get(channel), channel));
+			player.sendMessage(String.format("%sUnbanned %s from [%s. %s]", getColor(channel), other, channels.get(channel), channel));
 
 		} else {
 			// add to the banned list
 			chatter.banned.add(channel);
-			player.sendMessage(String.format("%sBanned %s from [%s. %s]", config.getDefaultColor(), other, channels.get(channel), channel));
+			player.sendMessage(String.format("%sBanned %s from [%s. %s]", getColor(channel), other, channels.get(channel), channel));
 			
 			// remove them if they are in it
 			if(chatter.channels.containsKey(channel)) {
@@ -226,10 +257,11 @@ public class Chatter extends Config {
 			player.sendMessage(ChatColor.RED + other + " is already in the channel.");
 		} else { 
 			// send the invite, and tell the two parties
-			player.sendMessage(String.format("%sInvited %s to [%s. %s]", config.getDefaultColor(), other, channels.get(channel), channel));
-			if(!chatter.ignored(player.getName())) {
+			player.sendMessage(String.format("%sInvited %s to %s[%s. %s]", config.getDefaultColor(), other, getColor(channel), channels.get(channel), channel));
+			if(!chatter.ignored(this)) {
 				chatter.invited = channel;
-				chatter.player.sendMessage(String.format("%s%s invited you to [%s], type /%s to accept.", config.getDefaultColor(), player.getName(), channel, config.getCommand("join")));
+				chatter.invitedalias = channels.get(channel);
+				chatter.player.sendMessage(String.format("%s%s invited you to [%s. %s], type /%s to accept.", player.getName(), config.getDefaultColor(), channels.get(channel), channel, config.getCommand("join")));
 			}
 		}
 	}
@@ -273,7 +305,7 @@ public class Chatter extends Config {
 		for(Map.Entry<String, String> e : channels.entrySet()) {
 			if(!hidden) {
 				try {
-					rawSend(e.getKey(), player.getName(), String.format("%%s%s left channel [%%s. %s]", player.getName(), e.getKey()));
+					rawSend(e.getKey(), String.format("%s%%s left channel [%%s. %s]", getDisplayName(player, null), e.getKey()));
 				} catch(java.util.ConcurrentModificationException ignore) {}
 			}
 			activeChannels.get(e.getKey()).remove(this);
@@ -287,6 +319,7 @@ public class Chatter extends Config {
 			// responding to an invite hopefully, otherwise misusing it
 			if(invited != null) {
 				channel = invited;
+				alias = invitedalias;
 			} else {
 				player.sendMessage(ChatColor.RED + "Usage: /join <channel> <optional-alias>");
 				return;
@@ -355,9 +388,9 @@ public class Chatter extends Config {
 		channels.put(channel, alias);
 		
 		if(hidden) {
-			player.sendMessage(String.format("%s%s joined channel [%s. %s] (hidden)", config.getDefaultColor(), player.getName(), channels.get(channel), channel));
+			player.sendMessage(String.format("%s joined channel [%s. %s] (hidden)", getDisplayName(player, getColor(channel)), channels.get(channel), channel));
 		} else {
-			rawSend(channel, player.getName(), String.format("%%s%s joined channel [%%s. %s]", player.getName(), channel));
+			rawSend(channel, String.format("%s%%s joined channel [%%s. %s]", getDisplayName(player, getColor(channel)), channel));
 		}
 	}
 	
@@ -371,14 +404,15 @@ public class Chatter extends Config {
 		}
 		
 		if(hidden) {
-			player.sendMessage(String.format("%s%s left channel [%s. %s] (hidden)", config.getDefaultColor(), player.getName(), channels.get(channel), channel));
+			player.sendMessage(String.format("%s left channel [%s. %s] (hidden)", getDisplayName(player, getColor(channel)), channels.get(channel), channel));
 		} else {
-			rawSend(channel, player.getName(), String.format("%%s%s left channel [%%s. %s]", player.getName(), channel));
+			rawSend(channel, String.format("%s%%s left channel [%%s. %s]", getDisplayName(player, null), channel));
 		}
 
 		// actual leaving
 		activeChannels.get(channel).remove(this);
 		channels.remove(channel);
+		colors.remove(channel);
 		save();
 	}
 	
@@ -410,6 +444,38 @@ public class Chatter extends Config {
 		
 	}
 	
+	// sets the color for your current channel
+	public void color(String c) {
+		
+		ChatColor color;
+		try {
+			color = ChatColor.valueOf(c.toUpperCase());
+		} catch (IllegalArgumentException ignore) {
+			player.sendMessage(ChatColor.RED + "Unknown Color " + c);
+			return;
+		}
+		String channel = activeChannel(null);
+		
+		if(channel == null) {
+			player.sendMessage(ChatColor.RED + "Invalid Channel or focus.");
+			
+		} else {
+			colors.put(channel, color.toString());
+			player.sendMessage(String.format("%sColored Channel [%s. %s]", getColor(channel), channels.get(channel), channel));
+		}
+	}
+	
+	public String getNextColor() {
+		String colorpriority = config.getColorPriority();
+
+		// determine the color to use
+		for(String color : colors.values()) {
+			// move a used color to back of list
+			colorpriority = colorpriority.replace("" + color.charAt(1), "") + color.charAt(1);
+		}
+		return "" + ChatColor.COLOR_CHAR + colorpriority.charAt(0);
+	}
+
 	// gets a channel alias, or creates a new one
 	public String alias(String channel) {
 		String alias = channels.get(channel);
@@ -456,7 +522,7 @@ public class Chatter extends Config {
 				player.sendMessage(ChatColor.RED + "You are not in any channels by that name or alias.");
 			} else {
 				focus = channel;
-				player.sendMessage(config.getDefaultColor() + "Focused Channel [" + channels.get(channel) + ". " + channel + "]");
+				player.sendMessage(getColor(channel) + "Focused Channel [" + channels.get(channel) + ". " + channel + "]");
 				save();
 			}
 		}
@@ -506,48 +572,52 @@ public class Chatter extends Config {
 		
 		// send to channel!
 		if(!isSpamming(message, channel)) {
-			rawSend(channel, player.getName(), String.format("%%s[%%s]%s<%s> %s", ChatColor.WHITE, player.getName(), message.replace("%", "%%")));
+			rawSend(channel, String.format(config.getChannelMsgFormat(), ChatColor.WHITE, getDisplayName(player, ""), ChatColor.WHITE.toString(), message.replace("%", "%%")));
 		}
 		return true;
 	}
 	
 	// raw send to channel
-	public void rawSend(String channel, String sender, String rawText) {
+	public void rawSend(String channel, String rawText) {
 		String censoredText = config.censor(rawText);
 		
 		debug("sending rawText "+ rawText);
 		
 		// send to all of the people in the channel!
 		for(Chatter c: activeChannels.get(channel)) {
-			c.receive(channel, sender, rawText, censoredText);
+			c.receive(channel, this, rawText, censoredText);
 		}
 	}
 	
 	// receive channel chat
-	public void receive(String channel, String sender, String message, String censored) {
+	public void receive(String channel, Chatter sender, String message, String censored) {
 		if(!ignored(sender)) {
 			if(censoring) {
 				message = censored;
 			}
-			player.sendMessage(String.format(message, config.getDefaultColor(), channels.get(channel)));
+			player.sendMessage(String.format(message, getColor(channel), channels.get(channel)));
 		}
 	}
 	
 	// check if they are ignored
-	public boolean ignored(String sender) {
-		return ignoring.contains(sender);
+	public boolean ignored(Chatter sender) {
+		return ignoring.contains(getUniqueId(sender.player));
 	}
 	
 	// ignore a person
-	public void ignore(String other, Boolean mode) {
-		if(mode == null) {
-			ignore(other, !ignoring.contains(other));
+	public void ignore(String name, Boolean mode) {
+		Chatter other = find(name);
+		
+		if(other == null) {
+			player.sendMessage(ChatColor.RED + "There is no player by that name online.");
+		} else if(mode == null) {
+			ignore(other.player.getName(), !ignoring.contains(getUniqueId(other.player)));
 		} else if(mode.booleanValue() == true) {
-			ignoring.add(other);
-			player.sendMessage(config.getDefaultColor() + other + " is being ignored.");
+			ignoring.add(getUniqueId(other.player));
+			player.sendMessage(getDisplayName(other.player, null) + " is being ignored.");
 		} else {
-			ignoring.remove(other);
-			player.sendMessage(config.getDefaultColor() + other + " is not being ignored.");
+			ignoring.remove(getUniqueId(other.player));
+			player.sendMessage(getDisplayName(other.player, null) + " is not being ignored.");
 		}
 		save();
 	}
@@ -558,7 +628,7 @@ public class Chatter extends Config {
 		if(chatter == null) {
 			player.sendMessage(ChatColor.RED + "There is no player by that name online.");
 		} else {
-			message(chatter, player.getName(), message);
+			message(chatter, message);
 			retellTo = other;
 		}
 	}
@@ -568,7 +638,7 @@ public class Chatter extends Config {
 		if(chatter == null) {
 			player.sendMessage(ChatColor.RED + "No one to retell to.");
 		} else {
-			message(chatter, player.getName(), message);
+			message(chatter, message);
 		}
 	}
 
@@ -577,24 +647,24 @@ public class Chatter extends Config {
 		if(chatter == null) {
 			player.sendMessage(ChatColor.RED + "No one to reply to.");
 		} else {
-			message(chatter, player.getName(), message);
+			message(chatter, message);
 		}
 	}
 	
 	// message a player
-	public void message(Chatter other, String sender, String message) {
-		player.sendMessage(config.getTellToColor() + "<to " + other.player.getName() + "> " + message);
-		other.receive(sender, config.getTellFromColor() + "<from " + sender + "> " + message);
+	public void message(Chatter other, String message) {
+		player.sendMessage(String.format(config.getTellToFormat(), config.getTellToColor(), getDisplayName(other.player, ""), config.getTellToColor(), message.replace("%", "%%")));
+		other.receive(this, String.format(config.getTellFromFormat(), config.getTellFromColor(), getDisplayName(player, ""), config.getTellFromColor(), message.replace("%", "%%")));
 	}
 	
 	// receive private message
-	public void receive(String sender, String message) {
+	public void receive(Chatter sender, String message) {
 		if(!ignored(sender)) {
 			if(censoring) {
 				message = config.censor(message);
 			}
 			player.sendMessage(message);
-			replyTo = sender;
+			replyTo = sender.player.getName();
 		}
 	}
 	

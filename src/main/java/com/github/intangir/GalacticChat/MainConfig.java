@@ -43,6 +43,15 @@ public class MainConfig extends Config {
 	
 	@Comment("max number of channels they can join")
 	private Integer channelLimit;
+	
+	@Comment("format of chat in a channel, %%s is for channel color and channel alias")
+	private String channelMsgFormat;
+	
+	@Comment("private message sent format")
+	private String tellToFormat;
+
+	@Comment("private message received format")
+	private String tellFromFormat;
 
 	@Comment("default channel prefix color and join/focus/leave color")
 	private String defaultColor;
@@ -52,6 +61,9 @@ public class MainConfig extends Config {
 
 	@Comment("private message received color")
 	private String tellFromColor;
+	
+	@Comment("priority of color used for new channels")
+	private String colorPriority;
 
 	@Comment("Censor filters, replaced for people who have censoring on")
 	private Map<String, String> censors;
@@ -118,12 +130,21 @@ public class MainConfig extends Config {
 		commands.put("retell", "retell rt");
 		commands.put("ban", "gcban gcunban gcpardon");
 		commands.put("say", "say");
+		commands.put("color", "color");
 		
 		channelLimit = 9;
 		
 		defaultColor = ChatColor.YELLOW.toString();
+		
+		channelMsgFormat = "%%s[%%s]%s<%s%s> %s"; 
+		
+		tellToFormat = "%s<to %s%s> %s";
+		tellFromFormat = "%s<from %s%s> %s";
+		
 		tellToColor = ChatColor.DARK_GREEN.toString();
 		tellFromColor = ChatColor.GREEN.toString();
+		
+		colorPriority = "eb9ad710c632548";
 
 		censors = new HashMap<String, String>();
 		censors.put("fuck", "frak");
@@ -134,6 +155,7 @@ public class MainConfig extends Config {
 		censors.put("nigg", "nagg");
 		
 		localIfNoFocus = true;
+		focusOnUse = true;
 		
 		debug = false;
 		
@@ -179,6 +201,13 @@ public class MainConfig extends Config {
 	}
 	
 	public String getCommand(String key) {
+		if(!commands.containsKey(key)) {
+			commands.put(key, key);
+			try {
+				save();
+			} catch (InvalidConfigurationException ignore) {
+			}
+		}
 		return commands.get(key).split(" ")[0];
 	}
 	
